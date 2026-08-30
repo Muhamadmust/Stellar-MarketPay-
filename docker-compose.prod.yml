@@ -7,6 +7,12 @@ x-logging: &default-logging
 x-default-labels: &default-labels
   project: stellar-marketpay
   environment: production
+x-container-security: &container-security
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
 
 services:
   nginx:
@@ -31,7 +37,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
     logging: *default-logging
 
@@ -46,11 +52,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
+          cpus: "0.2"
           memory: 128M
 
   frontend-blue:
-    image: ${IMAGE_TAG}
+    <<: *container-security
+    image: ${IMAGE_TAG:-stellar-marketpay-frontend:local}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
     restart: unless-stopped
     profiles: ["blue"]
     environment:
@@ -58,24 +68,25 @@ services:
       NEXT_PUBLIC_API_URL_FILE: /run/secrets/next_public_api_url
     secrets:
       - next_public_api_url
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=1777
+      - /app/.next/cache:uid=1000,gid=1000,mode=0750
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
     logging: *default-logging
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     labels:
       <<: *default-labels
       service: frontend
 
   backend-blue:
-    image: ${BACKEND_IMAGE_TAG:-${IMAGE_TAG}}
+    <<: *container-security
+    image: ${BACKEND_IMAGE_TAG:-stellar-marketpay-backend:local}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
     restart: unless-stopped
     profiles: ["blue"]
     environment:
@@ -83,20 +94,21 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
     secrets:
       - database_url
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=1777
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
     logging: *default-logging
 
   frontend-green:
-    image: ${IMAGE_TAG}
+    <<: *container-security
+    image: ${IMAGE_TAG:-stellar-marketpay-frontend:local}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
     restart: unless-stopped
     profiles: ["green"]
     environment:
@@ -104,20 +116,22 @@ services:
       NEXT_PUBLIC_API_URL_FILE: /run/secrets/next_public_api_url
     secrets:
       - next_public_api_url
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=1777
+      - /app/.next/cache:uid=1000,gid=1000,mode=0750
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
     logging: *default-logging
 
   backend-green:
-    image: ${BACKEND_IMAGE_TAG:-${IMAGE_TAG}}
+    <<: *container-security
+    image: ${BACKEND_IMAGE_TAG:-stellar-marketpay-backend:local}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
     restart: unless-stopped
     profiles: ["green"]
     environment:
@@ -125,18 +139,14 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
     secrets:
       - database_url
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    tmpfs:
+      - /tmp:uid=1000,gid=1000,mode=1777
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 1G
     logging: *default-logging
-      DATABASE_URL: ${DATABASE_URL}
     labels:
       <<: *default-labels
       service: backend
@@ -155,7 +165,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 256M
     ports:
       - "9100:9100"
@@ -174,7 +184,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
     ports:
       - "9090:9090"
@@ -197,10 +207,15 @@ services:
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    labels:
+      <<: *default-labels
+      service: grafana
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
 
   watchtower:
@@ -213,7 +228,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
+          cpus: "0.2"
           memory: 128M
 
 volumes:
@@ -230,8 +245,3 @@ secrets:
     external: true
   grafana_admin_password:
     external: true
-    ports:
-      - "3001:3000"
-    labels:
-      <<: *default-labels
-      service: grafana
